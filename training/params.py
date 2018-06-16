@@ -15,20 +15,20 @@ TRAINING_PARAMS = \
         "other_lr": 0.01,
         "freeze_backbone": False,   #  freeze backbone wegiths to finetune
         "decay_gamma": 0.1,
-        "decay_step": 30,           #  decay lr in every ? epochs
+        "decay_step": 1,           #  decay lr in every ? epochs
     },
     "optimizer": {
         "type": "sgd",
-        "weight_decay": 4e-05,
+        "weight_decay": 4e-04,
     },
-    "batch_size": 16,
-    "train_path": "../data/coco/trainvalno5k.txt",
-    "epochs": 100,
+    "batch_size": 32,
+    "train_path": "/home/bryce/data/prime_49k/train.txt",
+    "epochs": 10,
     "img_h": 416,
     "img_w": 416,
-    "parallels": [0,1,2,3],                         #  config GPU device
-    "working_dir": "YOUR_WORKING_DIR",              #  replace with your working dir
-    "pretrain_snapshot": "",                        #  load checkpoint
+    "parallels": [0,2,3,4],                         #  config GPU device
+    "working_dir": "/home/bryce/YOLOv3_PyTorch",    #  replace with your working dir
+    "pretrain_snapshot": "../darknet_53/size416x416_try0/20180617045156/model.pth",                        #  load checkpoint
     "evaluate_type": "", 
     "try": 0,
     "export_onnx": False,

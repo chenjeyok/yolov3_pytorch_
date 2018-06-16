@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import math
-
+import logging
 from common.utils import bbox_iou
 
 
@@ -118,8 +118,11 @@ class YOLOLoss(nn.Module):
                 tx[b, best_n, gj, gi] = gx - gi
                 ty[b, best_n, gj, gi] = gy - gj
                 # Width and height
+                #logging.debug('gw:%f anchors[best_n][0]%f' % (gw,anchors[best_n][0]))
+                #logging.debug('gh:%f anchors[best_n][1]%f' % (gh,anchors[best_n][1]))
                 tw[b, best_n, gj, gi] = math.log(gw/anchors[best_n][0] + 1e-16)
                 th[b, best_n, gj, gi] = math.log(gh/anchors[best_n][1] + 1e-16)
+
                 # object
                 tconf[b, best_n, gj, gi] = 1
                 # One-hot encoding of label

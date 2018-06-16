@@ -49,8 +49,8 @@ def train(config):
         state_dict = torch.load(config["pretrain_snapshot"])
         net.load_state_dict(state_dict)
 
-    # Only export onnx
-    # if config.get("export_onnx"):
+        # Only export onnx
+        # if config.get("export_onnx"):
         # real_model = net.module
         # real_model.eval()
         # dummy_input = torch.randn(8, 3, config["img_h"], config["img_w"]).cuda()
@@ -60,8 +60,8 @@ def train(config):
         # logging.info("Done. Exiting now.")
         # sys.exit()
 
-    # Evaluate interface
-    # if config["evaluate_type"]:
+        # Evaluate interface
+        # if config["evaluate_type"]:
         # logging.info("Using {} to evaluate model.".format(config["evaluate_type"]))
         # evaluate_func = importlib.import_module(config["evaluate_type"]).run_eval
         # config["online_net"] = net
@@ -98,13 +98,13 @@ def train(config):
             loss.backward()
             optimizer.step()
 
-            if step > 0 and step % 10 == 0:
+            if step > 0 and step % 1 == 0:
                 _loss = loss.item()
                 duration = float(time.time() - start_time)
                 example_per_second = config["batch_size"] / duration
                 lr = optimizer.param_groups[0]['lr']
                 logging.info(
-                    "epoch [%.3d] iter = %d loss = %.2f example/sec = %.3f lr = %.5f "%
+                    "epoch [%.3d] iter = %d loss = %.2f example/sec = %.3f lr = %.5f " %
                     (epoch, step, _loss, example_per_second, lr)
                 )
                 config["tensorboard_writer"].add_scalar("lr",
@@ -119,17 +119,19 @@ def train(config):
                                                             value,
                                                             config["global_step"])
 
-            if step > 0 and step % 1000 == 0:
+            if step > 0 and step % 100 == 0:
+                continue
                 # net.train(False)
                 _save_checkpoint(net.state_dict(), config)
                 # net.train(True)
 
         lr_scheduler.step()
+        _save_checkpoint(net.state_dict(), config)
 
     # net.train(False)
-    _save_checkpoint(net.state_dict(), config)
     # net.train(True)
     logging.info("Bye~")
+
 
 # best_eval_result = 0.0
 def _save_checkpoint(state_dict, config, evaluate_func=None):
@@ -139,13 +141,13 @@ def _save_checkpoint(state_dict, config, evaluate_func=None):
     logging.info("Model checkpoint saved to %s" % checkpoint_path)
     # eval_result = evaluate_func(config)
     # if eval_result > best_eval_result:
-        # best_eval_result = eval_result
-        # logging.info("New best result: {}".format(best_eval_result))
-        # best_checkpoint_path = os.path.join(config["sub_working_dir"], 'model_best.pth')
-        # shutil.copyfile(checkpoint_path, best_checkpoint_path)
-        # logging.info("Best checkpoint saved to {}".format(best_checkpoint_path))
+    # best_eval_result = eval_result
+    # logging.info("New best result: {}".format(best_eval_result))
+    # best_checkpoint_path = os.path.join(config["sub_working_dir"], 'model_best.pth')
+    # shutil.copyfile(checkpoint_path, best_checkpoint_path)
+    # logging.info("Best checkpoint saved to {}".format(best_checkpoint_path))
     # else:
-        # logging.info("Best result: {}".format(best_eval_result))
+    # logging.info("Best result: {}".format(best_eval_result))
 
 
 def _get_optimizer(config, net):
@@ -188,6 +190,7 @@ def _get_optimizer(config, net):
 
     return optimizer
 
+
 def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="[%(asctime)s %(filename)s] %(message)s")
@@ -204,7 +207,7 @@ def main():
 
     # Create sub_working_dir
     sub_working_dir = '{}/{}/size{}x{}_try{}/{}'.format(
-        config['working_dir'], config['model_params']['backbone_name'], 
+        config['working_dir'], config['model_params']['backbone_name'],
         config['img_w'], config['img_h'], config['try'],
         time.strftime("%Y%m%d%H%M%S", time.localtime()))
     if not os.path.exists(sub_working_dir):
@@ -219,6 +222,7 @@ def main():
     # Start training
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config["parallels"]))
     train(config)
+
 
 if __name__ == "__main__":
     main()

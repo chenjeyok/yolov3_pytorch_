@@ -12,12 +12,13 @@ import shutil
 import torch
 import torch.nn as nn
 
-
 MY_DIRNAME = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(MY_DIRNAME, '..'))
 from nets.model_main import ModelMain
 from nets.yolo_loss import YOLOLoss
-from common.coco_dataset import COCODataset
+from common.ai_prime_dataset import AIPrimeDataset
+# from common.coco_dataset import COCODataset
+
 from common.utils import non_max_suppression, bbox_iou
 
 
@@ -45,7 +46,7 @@ def evaluate(config):
                                     config["yolo"]["classes"], (config["img_w"], config["img_h"])))
 
     # DataLoader
-    dataloader = torch.utils.data.DataLoader(COCODataset(config["val_path"]),
+    dataloader = torch.utils.data.DataLoader(dataset=AIPrimeDataset(config["val_path"]),
                                              batch_size=config["batch_size"],
                                              shuffle=False, num_workers=16, pin_memory=False)
 
@@ -53,6 +54,7 @@ def evaluate(config):
     logging.info("Start eval.")
     n_gt = 0
     correct = 0
+    logging.info('%s' % str(dataloader))
     for step, (images, labels) in enumerate(dataloader):
         labels = labels.cuda()
         with torch.no_grad():
@@ -60,22 +62,28 @@ def evaluate(config):
             output_list = []
             for i in range(3):
                 output_list.append(yolo_losses[i](outputs[i]))
-            output = torch.cat(output_list, 1)
-            output = non_max_suppression(output, 80, conf_thres=0.2)
+            output = torch.cat(output_list, dim=1)
+            output = non_max_suppression(prediction=output, num_classes=80, conf_thres=0.2, nms_thres=0.4)
             #  calculate
             for sample_i in range(labels.size(0)):
                 # Get labels for sample where width is not zero (dummies)
                 target_sample = labels[sample_i, labels[sample_i, :, 3] != 0]
+                # 每一个ground truth的 分类编号obj_cls、相对中心x、相对中心y、相对宽w、相对高h
                 for obj_cls, tx, ty, tw, th in target_sample:
                     # Get rescaled gt coordinates
+                    # 转化为输入像素尺寸的 左上角像素tx1 ty1，右下角像素tx2 ty2
                     tx1, tx2 = config["img_w"] * (tx - tw / 2), config["img_w"] * (tx + tw / 2)
                     ty1, ty2 = config["img_h"] * (ty - th / 2), config["img_h"] * (ty + th / 2)
+                    # 计算ground truth数量，用于统计信息
                     n_gt += 1
+                    #
                     box_gt = torch.cat([coord.unsqueeze(0) for coord in [tx1, ty1, tx2, ty2]]).view(1, -1)
                     sample_pred = output[sample_i]
                     if sample_pred is not None:
                         # Iterate through predictions where the class predicted is same as gt
-                        for x1, y1, x2, y2, conf, obj_conf, obj_pred in sample_pred[sample_pred[:, 6] == obj_cls]:
+                        # 对于每一个ground truth，遍历预测结果
+                        for x1, y1, x2, y2, conf, obj_conf, obj_pred in sample_pred[
+                                    sample_pred[:, 6] == obj_cls]:  # 如果当前预测分类 == 当前真实分类
                             box_pred = torch.cat([coord.unsqueeze(0) for coord in [x1, y1, x2, y2]]).view(1, -1)
                             iou = bbox_iou(box_pred, box_gt)
                             if iou >= config["iou_thres"]:
@@ -85,6 +93,7 @@ def evaluate(config):
             logging.info('Batch [%d/%d] mAP: %.5f' % (step, len(dataloader), float(correct / n_gt)))
 
     logging.info('Mean Average Precision: %.5f' % float(correct / n_gt))
+
 
 def main():
     logging.basicConfig(level=logging.DEBUG,
@@ -104,5 +113,10 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config["parallels"]))
     evaluate(config)
 
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logging.error('User KeyboardInterrupt, exit')
+        exit(0)
