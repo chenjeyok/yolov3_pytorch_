@@ -10,33 +10,29 @@ from PIL import Image
 from skimage.transform import resize
 
 class AIPrimeDataset(Dataset):
-    def __init__(self, list_path, img_size=416):
+    def __init__(self, list_path, img_w, img_h):
         with open(list_path, 'r') as file:
             self.img_files = file.readlines()
         self.label_files = [path.replace('images', 'labels').replace('.png', '.txt'
                             ).replace('.jpg', '.txt') for path in self.img_files]
-        self.img_shape = (img_size, img_size)
-        self.max_objects = 50
+        self.resized_img_shape = (img_h, img_w) # for resize method use & it requires (h,w)
+        self.max_objects = 100
 
     def __getitem__(self, index):
         img_path = self.img_files[index % len(self.img_files)].rstrip()
         img = np.array(Image.open(img_path))
 
+        #logging.debug(img.shape)
         # Black and white images
         if len(img.shape) == 2:
             img = np.repeat(img[:, :, np.newaxis], 3, axis=2)
 
         h, w, _ = img.shape
-        dim_diff = np.abs(h - w)
-        # Upper (left) and lower (right) padding
-        pad1, pad2 = dim_diff // 2, dim_diff - dim_diff // 2
-        # Determine padding
-        pad = ((pad1, pad2), (0, 0), (0, 0)) if h <= w else ((0, 0), (pad1, pad2), (0, 0))
-        # Add padding
-        input_img = np.pad(img, pad, 'constant', constant_values=128) / 255.
-        padded_h, padded_w, _ = input_img.shape
-        # Resize and normalize
-        input_img = resize(input_img, (*self.img_shape, 3), mode='reflect')
+        #logging.debug(img.shape)
+
+        input_img = resize(img, (*self.resized_img_shape, 3), mode='reflect')
+        logging.debug(input_img.shape)
+
         # Channels-first
         input_img = np.transpose(input_img, (2, 0, 1))
         # As pytorch tensor
@@ -45,30 +41,27 @@ class AIPrimeDataset(Dataset):
         #---------
         #  Label
         #---------
+        resized_h, resized_w, _ = input_img.shape
 
         label_path = self.label_files[index % len(self.img_files)].rstrip()
 
         labels = None
         if os.path.exists(label_path):
             labels = np.loadtxt(label_path).reshape(-1, 5)
-            # Extract coordinates for unpadded + unscaled image
-            x1 = w * (labels[:, 1] - labels[:, 3]/2)
-            y1 = h * (labels[:, 2] - labels[:, 4]/2)
-            x2 = w * (labels[:, 1] + labels[:, 3]/2)
-            y2 = h * (labels[:, 2] + labels[:, 4]/2)
-            # Adjust for added padding
-            x1 += pad[1][0]
-            y1 += pad[0][0]
-            x2 += pad[1][0]
-            y2 += pad[0][0]
+            # Extract coordinates for  unscaled image
+            x1 = w * (labels[:, 1] - labels[:, 3] / 2)
+            y1 = h * (labels[:, 2] - labels[:, 4] / 2)
+            x2 = w * (labels[:, 1] + labels[:, 3] / 2)
+            y2 = h * (labels[:, 2] + labels[:, 4] / 2)
             # Calculate ratios from coordinates
-            labels[:, 1] = ((x1 + x2) / 2) / padded_w
-            labels[:, 2] = ((y1 + y2) / 2) / padded_h
-            labels[:, 3] *= w / padded_w
-            labels[:, 4] *= h / padded_h
+            labels[:, 1] = ((x1 + x2) / 2) / resized_w
+            labels[:, 2] = ((y1 + y2) / 2) / resized_h
+            labels[:, 3] *= w / resized_w
+            labels[:, 4] *= h / resized_h
         else:
-            logging.info("label does not exist: {}".format(label_path))
+            logging.info("label does not exist, using zero filling: {}".format(label_path))
         # Fill matrix
+        # note that this matrix has len=max_objects at dim=0
         filled_labels = np.zeros((self.max_objects, 5), np.float32)
         if labels is not None:
             filled_labels[range(len(labels))[:self.max_objects]] = labels[:self.max_objects]

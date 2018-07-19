@@ -9,19 +9,30 @@ import importlib
 import logging
 import shutil
 
+from tensorboardX import SummaryWriter
+
+from pycallgraph import PyCallGraph
+from pycallgraph import Config
+from pycallgraph.output import GraphvizOutput
+
+# 当前文件所在的路径
+MY_DIRNAME = os.path.dirname(os.path.abspath(__file__))
+# 系统 $PATH变量 在0位置插入当前文件所在路径的上层，是为了找到common和nets
+sys.path.insert(0, os.path.join(MY_DIRNAME, '..'))
+# sys.path.insert(0, os.path.join(MY_DIRNAME, '..', 'evaluate'))
+
+# model main是输出预测的主网络，yolo_loss是专门用于训练的计算loss的网络
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-from tensorboardX import SummaryWriter
-
-MY_DIRNAME = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(MY_DIRNAME, '..'))
-# sys.path.insert(0, os.path.join(MY_DIRNAME, '..', 'evaluate'))
 from nets.model_main import ModelMain
 from nets.yolo_loss import YOLOLoss
 from common.coco_dataset import COCODataset
+from common.ai_prime_dataset import  AIPrimeDataset
+from common.utils import non_max_suppression, bbox_iou
+
 
 
 def train(config):
@@ -34,6 +45,7 @@ def train(config):
 
     # Optimizer and learning rate
     optimizer = _get_optimizer(config, net)
+    # 专门有一个
     lr_scheduler = optim.lr_scheduler.StepLR(
         optimizer,
         step_size=config["lr"]["decay_step"],
@@ -73,20 +85,23 @@ def train(config):
                                     config["yolo"]["classes"], (config["img_w"], config["img_h"])))
 
     # DataLoader
-    dataloader = torch.utils.data.DataLoader(COCODataset(config["train_path"]),
+    dataloader = torch.utils.data.DataLoader(COCODataset(config["train_path"], config["img_h"]),
                                              batch_size=config["batch_size"],
-                                             shuffle=True, num_workers=16, pin_memory=False)
+                                             shuffle=False, num_workers=16, pin_memory=True)
 
     # Start the training loop
     logging.info("Start training.")
-    for epoch in range(config["epochs"]):
+    for epoch in range(config["start_epoch"], config["epochs"]):
+        # _cross_validation(config, net, epoch, yolo_losses)
         for step, (images, labels) in enumerate(dataloader):
             start_time = time.time()
             config["global_step"] += 1
 
             # Forward and backward
             optimizer.zero_grad()
+            #logging.info(images.shape)
             outputs = net(images)
+            #logging.info([o.shape for o in outputs])
             losses_name = ["total_loss", "x", "y", "w", "h", "conf", "cls"]
             losses = [[]] * len(losses_name)
             for i in range(3):
@@ -119,24 +134,20 @@ def train(config):
                                                             value,
                                                             config["global_step"])
 
-            if step > 0 and step % 100 == 0:
-                continue
-                # net.train(False)
-                _save_checkpoint(net.state_dict(), config)
                 # net.train(True)
 
         lr_scheduler.step()
-        _save_checkpoint(net.state_dict(), config)
+        # save every epoch
+        _save_checkpoint(net.state_dict(), config, epoch)
 
     # net.train(False)
     # net.train(True)
     logging.info("Bye~")
 
-
-# best_eval_result = 0.0
-def _save_checkpoint(state_dict, config, evaluate_func=None):
+def _save_checkpoint(state_dict, config, epoch, evaluate_func=None):
     # global best_eval_result
-    checkpoint_path = os.path.join(config["sub_working_dir"], "model.pth")
+    # 从config中读取main里构造的保存目录，再拼接为modle.pth这个名称
+    checkpoint_path = os.path.join(config["sub_working_dir"], "model%.2d.pth"%epoch)
     torch.save(state_dict, checkpoint_path)
     logging.info("Model checkpoint saved to %s" % checkpoint_path)
     # eval_result = evaluate_func(config)
@@ -195,34 +206,60 @@ def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="[%(asctime)s %(filename)s] %(message)s")
 
+    # 检查参数数量，需要两个参数，一个是training.py 一个是配置params.py
     if len(sys.argv) != 2:
         logging.error("Usage: python training.py params.py")
         sys.exit()
+    # 参数2是配置，"params.py"
     params_path = sys.argv[1]
+    # 检查该路径下是否存在这个配置文件
     if not os.path.isfile(params_path):
         logging.error("no params file found! path: {}".format(params_path))
         sys.exit()
+    # 去除后缀名'.py'，用importlib.import_module导入这个模块
     config = importlib.import_module(params_path[:-3]).TRAINING_PARAMS
+    # mini-batch的size在这里乘上GPU数作为一个Iteration的大Batch_Size
+    # 因此，样本总数 =  Batch_Size * GPUs * Iterations
     config["batch_size"] *= len(config["parallels"])
 
     # Create sub_working_dir
-    sub_working_dir = '{}/{}/size{}x{}_try{}/{}'.format(
+    # 从配置文件中读取工作目录，并构造成本次训练权重的用的路径
+    sub_working_dir = '{}/{}/size{}x{}_try{}'.format(
         config['working_dir'], config['model_params']['backbone_name'],
-        config['img_w'], config['img_h'], config['try'],
-        time.strftime("%Y%m%d%H%M%S", time.localtime()))
+        config['img_w'], config['img_h'], config['try'])
+    # 创建该保存路径路径
     if not os.path.exists(sub_working_dir):
         os.makedirs(sub_working_dir)
+    # 顺便在内存的config字典中保存一下这个保存用的子路径
     config["sub_working_dir"] = sub_working_dir
     logging.info("sub working dir: %s" % sub_working_dir)
 
     # Creat tf_summary writer
+    # 顺便实例化一个SummaryWriter，输出的数据可以被tensorboard读取显示出来
     config["tensorboard_writer"] = SummaryWriter(sub_working_dir)
     logging.info("Please using 'python -m tensorboard.main --logdir={}'".format(sub_working_dir))
 
     # Start training
+    # 读取配置中使用的GPU list，然后组合为"0,2,3,4"这样的字符串
+    # 再设置为系统的环境变量，$CUDA_VISIBLE_DEVICES，
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config["parallels"]))
+
+    # 开启训练！！！！
+    config["train_path"] = "/home/bryce/data/batch_all/train.txt"
+    config["start_epoch"]=67
+    config["epochs"] = 68
+    config["pretrain_snapshot"]= "/home/bryce/OLD_YOLOv3_PyTorch/darknet_53/size960x960_try5/model66.pth"  # load checkpoint
+
     train(config)
 
 
 if __name__ == "__main__":
+    #graphviz = GraphvizOutput(output_file=r'./trace_%s.png' % str(__file__))
+    #pycallgraph_config = Config(max_depth=100)
+    #with PyCallGraph(output=graphviz,config=pycallgraph_config):
     main()
+
+    import torchvision
+    #train_dataset = torchvision.datasets.CIFAR10()
+    #criterion = nn.CrossEntropyLoss()
+    #resnet = torchvision.models.resnet18(pretrained=True)

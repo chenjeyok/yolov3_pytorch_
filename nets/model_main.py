@@ -3,7 +3,7 @@ import torch.nn as nn
 from collections import OrderedDict
 
 from .backbone import backbone_fn
-
+import logging
 
 class ModelMain(nn.Module):
     def __init__(self, config, is_training=True):
@@ -16,15 +16,18 @@ class ModelMain(nn.Module):
         self.backbone = _backbone_fn(self.model_params["backbone_pretrained"])
         _out_filters = self.backbone.layers_out_filters
         #  embedding0
-        self.embedding0 = self._make_embedding([512, 1024], _out_filters[-1])
+        final_out_filter0 = len(config["yolo"]["anchors"][0]) * (5 + config["yolo"]["classes"])
+        self.embedding0 = self._make_embedding([512, 1024], _out_filters[-1], final_out_filter0)
         #  embedding1
+        final_out_filter1 = len(config["yolo"]["anchors"][1]) * (5 + config["yolo"]["classes"])
         self.embedding1_cbl = self._make_cbl(512, 256, 1)
         self.embedding1_upsample = nn.Upsample(scale_factor=2, mode='nearest')
-        self.embedding1 = self._make_embedding([256, 512], _out_filters[-2] + 256)
+        self.embedding1 = self._make_embedding([256, 512], _out_filters[-2] + 256, final_out_filter1)
         #  embedding2
+        final_out_filter2 = len(config["yolo"]["anchors"][2]) * (5 + config["yolo"]["classes"])
         self.embedding2_cbl = self._make_cbl(256, 128, 1)
         self.embedding2_upsample = nn.Upsample(scale_factor=2, mode='nearest')
-        self.embedding2 = self._make_embedding([128, 256], _out_filters[-3] + 128)
+        self.embedding2 = self._make_embedding([128, 256], _out_filters[-3] + 128, final_out_filter2)
 
     def _make_cbl(self, _in, _out, ks):
         ''' cbl = conv + batch_norm + leaky_relu
@@ -36,7 +39,7 @@ class ModelMain(nn.Module):
             ("relu", nn.LeakyReLU(0.1)),
         ]))
 
-    def _make_embedding(self, filters_list, in_filters):
+    def _make_embedding(self, filters_list, in_filters, out_filter):
         m = nn.ModuleList([
             self._make_cbl(in_filters, filters_list[0], 1),
             self._make_cbl(filters_list[0], filters_list[1], 3),
@@ -44,7 +47,7 @@ class ModelMain(nn.Module):
             self._make_cbl(filters_list[0], filters_list[1], 3),
             self._make_cbl(filters_list[1], filters_list[0], 1),
             self._make_cbl(filters_list[0], filters_list[1], 3)])
-        m.add_module("conv_out", nn.Conv2d(filters_list[1], 255, kernel_size=1,
+        m.add_module("conv_out", nn.Conv2d(filters_list[1], out_filter, kernel_size=1,
                                            stride=1, padding=0, bias=True))
         return m
 
@@ -62,6 +65,7 @@ class ModelMain(nn.Module):
         #  yolo branch 1
         x1_in = self.embedding1_cbl(out0_branch)
         x1_in = self.embedding1_upsample(x1_in)
+        #logging.debug(x1_in.shape)
         x1_in = torch.cat([x1_in, x1], 1)
         out1, out1_branch = _branch(self.embedding1, x1_in)
         #  yolo branch 2
@@ -156,4 +160,3 @@ if __name__ == "__main__":
     print(y0.size())
     print(y1.size())
     print(y2.size())
-

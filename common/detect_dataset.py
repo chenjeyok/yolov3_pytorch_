@@ -9,25 +9,26 @@ from torch.utils.data import Dataset
 from PIL import Image
 from skimage.transform import resize
 
-class COCODataset(Dataset):
+
+class DetectDataset(Dataset):
     def __init__(self, list_path, img_size=416):
         with open(list_path, 'r') as file:
             self.img_files = file.readlines()
         self.label_files = [path.replace('images', 'labels').replace('.png', '.txt').replace('.jpg', '.txt') for path in self.img_files]
         self.img_shape = (img_size, img_size)
-        self.max_objects = 100
+        self.max_objects = 20
 
     def __getitem__(self, index):
         img_path = self.img_files[index % len(self.img_files)].rstrip()
         img = np.array(Image.open(img_path))
-        #logging.debug(img.shape)
+
         # Black and white images
-        #if len(img.shape) == 2:
-        #    img = np.repeat(img[:, :, np.newaxis], 3, axis=2)
+        if len(img.shape) == 2:
+            img = np.repeat(img[:, :, np.newaxis], 3, axis=2)
 
         h, w, _ = img.shape
         dim_diff = np.abs(h - w)
-        # Upper lower (or left right) padding
+        # Upper (left) and lower (right) padding
         pad1, pad2 = dim_diff // 2, dim_diff - dim_diff // 2
         # Determine padding
         pad = ((pad1, pad2), (0, 0), (0, 0)) if h <= w else ((0, 0), (pad1, pad2), (0, 0))
@@ -78,5 +79,3 @@ class COCODataset(Dataset):
 
     def __len__(self):
         return len(self.img_files)
-
-

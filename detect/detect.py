@@ -9,6 +9,10 @@ import importlib
 import logging
 import shutil
 
+from pycallgraph import PyCallGraph
+from pycallgraph import Config
+from pycallgraph.output import GraphvizOutput
+
 import torch
 import torch.nn as nn
 
@@ -17,9 +21,9 @@ sys.path.insert(0, os.path.join(MY_DIRNAME, '..'))
 from nets.model_main import ModelMain
 from nets.yolo_loss import YOLOLoss
 from common.coco_dataset import COCODataset
-from common.ai_prime_dataset import AIPrimeDataset
-from common.utils import non_max_suppression, bbox_iou, class_nms
 
+from common.utils import non_max_suppression, bbox_iou, draw_prediction
+import cv2
 
 
 def evaluate(config):
@@ -46,15 +50,15 @@ def evaluate(config):
                                     config["yolo"]["classes"], (config["img_w"], config["img_h"])))
 
     # DataLoader
-    dataloader = torch.utils.data.DataLoader(dataset=COCODataset(config["test_path"], config["img_w"]),
+    dataloader = torch.utils.data.DataLoader(dataset=COCODataset(config["val_path"], config["img_w"]),
                                              batch_size=config["batch_size"],
-                                             shuffle=False, num_workers=8, pin_memory=False)
+                                             shuffle=True, num_workers=1, pin_memory=False)
 
     # Start the eval loop
-    #logging.info("Start eval.")
+    logging.info("Start eval.")
     n_gt = 0
     correct = 0
-    #logging.debug('%s' % str(dataloader))
+    logging.info('%s' % str(dataloader))
 
     gt_histro={}
     pred_histro = {}
@@ -75,28 +79,31 @@ def evaluate(config):
                 output_list.append(yolo_losses[i](outputs[i]))
 
             # 把三个尺度上的预测结果在第1维度(第0维度是batch里的照片，第1维度是一张照片里面的各个预测框，第2维度是各个预测数值)上拼接起来
-            output = torch.cat(output_list, dim=1)
+            batch_output = torch.cat(output_list, dim=1)
 
-            #logging.info('%s' % str(output.shape))
+            logging.info('%s' % str(batch_output.shape))
 
             # 进行NMS抑制
-            #output = non_max_suppression(prediction=output, num_classes=config["yolo"]["classes"], conf_thres=config["conf_thresh"], nms_thres=config["nms_thresh"])
-            output = class_nms(prediction=output, num_classes=config["yolo"]["classes"],conf_thres=config["conf_thresh"], nms_thres=config["nms_thresh"])
+            batch_output = non_max_suppression(prediction=batch_output, num_classes=config["yolo"]["classes"], conf_thres=config["conf_thresh"], nms_thres=config["nms_thresh"])
             #  calculate
-            for sample_i in range(labels.size(0)):
+            for sample_index_in_batch in range(labels.size(0)):
+                # fetched img sample in tensor( C(RxGxB) x H x W ), transform to cv2 format in  H x W x C(BxGxR)
+                sample_image = images[sample_index_in_batch].numpy()
+                sample_image = np.transpose(sample_image, (1, 2, 0))
+                sample_image = cv2.cvtColor(sample_image, cv2.COLOR_RGB2BGR)
 
-                # 计算所有的预测数量
-                sample_pred = output[sample_i]
+                logging.debug("fetched img %d size %s" % (sample_index_in_batch, sample_image.shape))
+                # Get labels for sample where width is not zero (dummies)(init all labels to zeros in array)
+                target_sample = labels[sample_index_in_batch, labels[sample_index_in_batch, :, 3] != 0]
+                # get prediction for this sample
+                sample_pred = batch_output[sample_index_in_batch]
                 if sample_pred is not None:
-                    #logging.debug(sample_pred.shape)
-                    for i in range(sample_pred.shape[0]):
-                        pred_histro[int(sample_pred[i,6])] +=  1
+                    for x1, y1, x2, y2, conf, obj_conf, obj_pred in sample_pred:  # for each prediction box
+                        # logging.info("%d" % obj_cls)
+                        box_pred = torch.cat([coord.unsqueeze(0) for coord in [x1, y1, x2, y2]]).view(1, -1)
+                        sample_image = draw_prediction(sample_image,conf, obj_conf, int(obj_pred), (x1, y1, x2, y2), config)
 
-                # Get labels for sample where width is not zero (dummies)
-                target_sample = labels[sample_i, labels[sample_i, :, 3] != 0]
-                # Ground truth的 分类编号obj_cls、相对中心x、相对中心y、相对宽w、相对高h
-                n_gt=0
-                correct=0
+                # 每一个ground truth的 分类编号obj_cls、相对中心x、相对中心y、相对宽w、相对高h
                 for obj_cls, tx, ty, tw, th in target_sample:
                     # Get rescaled gt coordinates
                     # 转化为输入像素尺寸的 左上角像素tx1 ty1，右下角像素tx2 ty2
@@ -109,36 +116,30 @@ def evaluate(config):
                     box_gt = torch.cat([coord.unsqueeze(0) for coord in [tx1, ty1, tx2, ty2]]).view(1, -1)
                     # logging.info('%s' % str(box_gt.shape))
 
-                    sample_pred = output[sample_i]
+                    sample_pred = batch_output[sample_index_in_batch]
                     if sample_pred is not None:
                         # Iterate through predictions where the class predicted is same as gt
                         # 对于每一个ground truth，遍历预测结果
                         for x1, y1, x2, y2, conf, obj_conf, obj_pred in sample_pred[sample_pred[:, 6] == obj_cls]:  # 如果当前预测分类 == 当前真实分类
                             #logging.info("%d" % obj_cls)
                             box_pred = torch.cat([coord.unsqueeze(0) for coord in [x1, y1, x2, y2]]).view(1, -1)
-                            #pred_histro[int(obj_pred)] += 1
+                            pred_histro[int(obj_pred)] += 1
                             iou = bbox_iou(box_pred, box_gt)
-                            #if iou >= config["iou_thres"] and obj_conf >= config["obj_thresh"]:
                             if iou >= config["iou_thresh"]:
                                 correct += 1
                                 correct_histro[int(obj_pred)] += 1
                                 break
-                #logging.debug("----------------")
-                #logging.debug(correct_histro[4])
-                #logging.debug(pred_histro[4])
-                #logging.debug(gt_histro[4])
-    if n_gt:
-        types = config["types"]
+        if n_gt:
+            types = config["types"]
+            reverse_types = {}  # 建立一个反向的types
+            for key in types.keys():
+                reverse_types[types[key]] = key
 
-        reverse_types = {}  # 建立一个反向的types
-        for key in types.keys():
-            reverse_types[types[key]] = key
+            logging.info('Batch [%d/%d] mAP: %.5f' % (step, len(dataloader), float(correct / n_gt)))
+            logging.info('mAP Histro:%s' % str([  reverse_types[i] +':'+ str(int(100 * correct_histro[i] / gt_histro[i])) for i in range(config["yolo"]["classes"] )  ]))
+            logging.info('Recall His:%s' % str([  reverse_types[i] +':'+ str(int(100 * correct_histro[i] / pred_histro[i])) for i in range(config["yolo"]["classes"]) ]))
 
-        #logging.info('Batch [%d/%d] mAP: %.5f' % (step, len(dataloader), float(correct / n_gt)))
-        logging.info('Precision:%s' % str([reverse_types[i] +':'+ str(int(100 * correct_histro[i] / pred_histro[i])) for i in range(config["yolo"]["classes"]) ]))
-        logging.info('Recall   :%s' % str([reverse_types[i] +':'+ str(int(100 * correct_histro[i] / gt_histro[i])) for i in range(config["yolo"]["classes"])]))
-
-        #logging.info('Mean Average Precision: %.5f' % float(correct / n_gt))
+    logging.info('Mean Average Precision: %.5f' % float(correct / n_gt))
 
 
 def main():
@@ -157,27 +158,15 @@ def main():
 
     # Start training
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config["parallels"]))
-    # best 24/25
-    # best 31/35
-    # best 38/62; best 39/62 after IoU/B1/B2
-    for i in range(67,68):
-        #for conf_thresh in [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]: # m39 best 0.11
-        for conf_thresh in [(0.11,0.11,0.11,0.03,0.11),(0.11,0.11,0.11,0.04,0.11),(0.11,0.11,0.11,0.05,0.11)]:
-            #for nms_thresh in [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]: # m39 best 0.40 on IoU/B1/B2
-            for nms_thresh in [(0.4,0.4,0.4,0.35,0.4)]:
-                for iou_thresh in[0.4]:
-                # this one the smaller is the better, so there's no need to sweep it
-                    logging.info("model%.2d, conf_thresh=%s nms_thresh=%s(IoU/B1/B2) iou_thresh=%.2f" % (i, str(conf_thresh),str(nms_thresh),iou_thresh))
-                    config["conf_thresh"] = conf_thresh
-                    config["nms_thresh"] = nms_thresh
-                    config["test_path"]="/home/bryce/data/batch13/datasets/coco5/metas/valid.txt"
-                    config["pretrain_snapshot"]= "../darknet_53/size960x960_try5/model%.2d.pth" % i
-                    evaluate(config)
+    evaluate(config)
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        logging.error('User KeyboardInterrupt, exit')
-        exit(0)
+
+    graphviz = GraphvizOutput(output_file=r'./trace_%s.png' % str(__file__))
+    with PyCallGraph(output=graphviz):
+        try:
+            main()
+        except KeyboardInterrupt:
+            logging.error('User KeyboardInterrupt, exit')
+            exit(0)

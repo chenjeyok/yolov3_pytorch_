@@ -37,9 +37,9 @@ class DarkNet(nn.Module):
     def __init__(self, layers):
         super(DarkNet, self).__init__()
         self.inplanes = 32
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(self.inplanes)
-        self.relu1 = nn.LeakyReLU(0.1)
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(num_features=self.inplanes)
+        self.relu1 = nn.LeakyReLU(negative_slope=0.1)
 
         self.layer1 = self._make_layer([32, 64], layers[0])
         self.layer2 = self._make_layer([64, 128], layers[1])
