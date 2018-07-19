@@ -22,7 +22,7 @@ TRAINING_PARAMS = \
     "img_h": 960,
     "img_w": 960,
     "parallels": [2],
-    "pretrain_snapshot": "../darknet_53/size960x960_try5/model38.pth",
+    "pretrain_snapshot": "../darknet_53/size960x960_try5/model66.pth",
 
     "types":{"Person": 0, "Driver": 1,
              "Barrel": 2,

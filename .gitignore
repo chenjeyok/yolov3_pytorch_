@@ -4,3 +4,4 @@ __pycache__
 coco
 *.pth
 .DS_Store
+.idea/

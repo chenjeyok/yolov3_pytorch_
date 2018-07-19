@@ -33,11 +33,11 @@ TRAINING_PARAMS = \
     "img_h": 960,
     "img_w": 960,
     "parallels": [0,2,3,4],                         #  config GPU device
-    "working_dir": "/home/bryce/OLD_YOLOv3_PyTorch",    #  replace with your working dir
+    "working_dir": "/home/bryce/yolov3_pytprch_",    #  replace with your working dir
     "epochs": 25,
     "start_epoch":30,
     # pretrain_snapshot is deprecated, it will be changed before loading network
-    "pretrain_snapshot": "/home/bryce/YOLOv3_PyTorch/darknet_53/size960x960_try5/model24.pth",  # load checkpoint
+    "pretrain_snapshot": "/home/bryce/yolov3_pytorch_/darknet_53/size960x960_try5/model24.pth",  # load checkpoint
     #"pretrain_snapshot": "", #  load checkpoint
 
     "evaluate_type": "",

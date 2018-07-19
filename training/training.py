@@ -81,8 +81,11 @@ def train(config):
     # YOLO loss with 3 scales
     yolo_losses = []
     for i in range(3):
-        yolo_losses.append(YOLOLoss(config["yolo"]["anchors"][i],
-                                    config["yolo"]["classes"], (config["img_w"], config["img_h"])))
+        yolo_loss = YOLOLoss(config["yolo"]["anchors"][i],
+                                    config["yolo"]["classes"], (config["img_w"], config["img_h"]))
+        yolo_loss = nn.DataParallel(yolo_loss)
+        yolo_loss = yolo_loss.cuda()
+        yolo_losses.append(yolo_loss)
 
     # DataLoader
     dataloader = torch.utils.data.DataLoader(COCODataset(config["train_path"], config["img_h"]),
@@ -248,7 +251,7 @@ def main():
     config["train_path"] = "/home/bryce/data/batch_all/train.txt"
     config["start_epoch"]=67
     config["epochs"] = 68
-    config["pretrain_snapshot"]= "/home/bryce/OLD_YOLOv3_PyTorch/darknet_53/size960x960_try5/model66.pth"  # load checkpoint
+    config["pretrain_snapshot"]= "../darknet53/size960x960_try5/model66.pth"  # load checkpoint
 
     train(config)
 
