@@ -17,7 +17,7 @@ TRAINING_PARAMS = \
     "lr": {
         "backbone_lr": 0.005,
         "other_lr": 0.005,
-        "freeze_backbone": False,   #  freeze backbone wegiths to finetune
+        "freeze_backbone": True,   #  freeze backbone wegiths to finetune
         "decay_gamma": 0.1,
         "decay_step": 5,           #  decay lr in every ? epochs
     },
@@ -25,32 +25,27 @@ TRAINING_PARAMS = \
         "type": "sgd",
         "weight_decay": 4e-05,
     },
-    "batch_size": 8,
-    "validation_batch_size":8,
-    "train_path": "/home/bryce/data/batch13/datasets/coco5_sym/metas/train.txt",
-    "valid_path": "/home/bryce/data/batch13/datasets/coco5/metas/valid.txt",
+    "batch_size": 128,
+    #"validation_batch_size":8,
+    #"train_path": "/home/bryce/data/batch13/datasets/coco5_sym/metas/train.txt",
+    #"valid_path": "/home/bryce/data/batch13/datasets/coco5/metas/valid.txt",
     #"test_path": "/home/bryce/data/batch13/datasets/coco5/metas/test.txt",
-    "img_h": 960,
-    "img_w": 960,
-    "parallels": [4],                         #  config GPU device
-    "working_dir": "/home/bryce/yolov3_pytorch_",    #  replace with your working dir
-    "epochs": 25,
-    "start_epoch":30,
+    "img_h": 416,
+    "img_w": 416,
+    "parallels": [0,2,3,4],                         #  config GPU device
+    "working_dir": "/home/bryce/yolov3_pytprch_",    #  replace with your working dir
+    #"epochs": 25,
+    #"start_epoch":30,
     # pretrain_snapshot is deprecated, it will be changed before loading network
-    "pretrain_snapshot": "/home/bryce/yolov3_pytorch_/darknet_53/size960x960_try5/model24.pth",  # load checkpoint
+    #"pretrain_snapshot": "/home/bryce/yolov3_pytorch_/darknet_53/size960x960_try5/model24.pth",  # load checkpoint
     #"pretrain_snapshot": "", #  load checkpoint
 
     "evaluate_type": "",
-    "try": 5,
+    "try": 0,
     "export_onnx": False,
 
-    "conf_thresh":0.15,
-    "nms_thresh":0.10,
-
-    "obj_thresh":0.50,
-    "iou_thresh": 0.50,
-
-    "types":{"Person": 0, "Driver": 1,
+    "types":{"Person": 0,
+             "Driver": 1,
              "Barrel": 2,
              "ICB": 3,
              "ForkLift": 4

@@ -11,10 +11,6 @@ import shutil
 
 from tensorboardX import SummaryWriter
 
-from pycallgraph import PyCallGraph
-from pycallgraph import Config
-from pycallgraph.output import GraphvizOutput
-
 # 当前文件所在的路径
 MY_DIRNAME = os.path.dirname(os.path.abspath(__file__))
 # 系统 $PATH变量 在0位置插入当前文件所在路径的上层，是为了找到common和nets
@@ -36,75 +32,51 @@ from common.utils import non_max_suppression, bbox_iou
 
 
 def train(config):
+    # Hyper-parameters
     config["global_step"] = config.get("start_step", 0)
-    is_training = False if config.get("export_onnx") else True
+    is_training =  True
 
-    # Load and initialize network
+    # Net & Loss & Optimizer
+    ## Net Main
     net = ModelMain(config, is_training=is_training)
     net.train(is_training)
 
-    # Optimizer and learning rate
-    optimizer = _get_optimizer(config, net)
-    # 专门有一个
-    lr_scheduler = optim.lr_scheduler.StepLR(
-        optimizer,
-        step_size=config["lr"]["decay_step"],
-        gamma=config["lr"]["decay_gamma"])
+    ## YOLO Loss with 3 scales
+    yolo_losses = []
+    for i in range(3):
+        yolo_loss = YOLOLoss(config["yolo"]["anchors"][i],
+                             config["yolo"]["classes"], (config["img_w"], config["img_h"]))
+        yolo_losses.append(yolo_loss)
 
-    # Set data parallel
+    ## Optimizer and LR scheduler
+    optimizer = _get_optimizer(config, net)
+    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=config["lr"]["decay_step"], gamma=config["lr"]["decay_gamma"])
+
     net = nn.DataParallel(net)
     net = net.cuda()
 
-    # Restore pretrain model
+    # Load checkpoint
     if config["pretrain_snapshot"]:
         logging.info("Load pretrained weights from {}".format(config["pretrain_snapshot"]))
         state_dict = torch.load(config["pretrain_snapshot"])
         net.load_state_dict(state_dict)
 
-        # Only export onnx
-        # if config.get("export_onnx"):
-        # real_model = net.module
-        # real_model.eval()
-        # dummy_input = torch.randn(8, 3, config["img_h"], config["img_w"]).cuda()
-        # save_path = os.path.join(config["sub_working_dir"], "pytorch.onnx")
-        # logging.info("Exporting onnx to {}".format(save_path))
-        # torch.onnx.export(real_model, dummy_input, save_path, verbose=False)
-        # logging.info("Done. Exiting now.")
-        # sys.exit()
-
-        # Evaluate interface
-        # if config["evaluate_type"]:
-        # logging.info("Using {} to evaluate model.".format(config["evaluate_type"]))
-        # evaluate_func = importlib.import_module(config["evaluate_type"]).run_eval
-        # config["online_net"] = net
-
-    # YOLO loss with 3 scales
-    yolo_losses = []
-    for i in range(3):
-        yolo_loss = YOLOLoss(config["yolo"]["anchors"][i],
-                                    config["yolo"]["classes"], (config["img_w"], config["img_h"]))
-        yolo_loss = nn.DataParallel(yolo_loss)
-        yolo_loss = yolo_loss.cuda()
-        yolo_losses.append(yolo_loss)
-
     # DataLoader
-    dataloader = torch.utils.data.DataLoader(COCODataset(config["train_path"], config["img_h"]),
+    dataloader = torch.utils.data.DataLoader(AIPrimeDataset(config["train_path"]),
                                              batch_size=config["batch_size"],
-                                             shuffle=False, num_workers=16, pin_memory=True)
+                                             shuffle=True, num_workers=16, pin_memory=True)
 
-    # Start the training loop
+    # Start the training
     logging.info("Start training.")
     for epoch in range(config["start_epoch"], config["epochs"]):
-        # _cross_validation(config, net, epoch, yolo_losses)
         for step, (images, labels) in enumerate(dataloader):
             start_time = time.time()
             config["global_step"] += 1
 
-            # Forward and backward
-            optimizer.zero_grad()
-            #logging.info(images.shape)
+            # Forward
             outputs = net(images)
-            #logging.info([o.shape for o in outputs])
+
+            # Loss
             losses_name = ["total_loss", "x", "y", "w", "h", "conf", "cls"]
             losses = [[]] * len(losses_name)
             for i in range(3):
@@ -113,10 +85,14 @@ def train(config):
                     losses[j].append(l)
             losses = [sum(l) for l in losses]
             loss = losses[0]
+
+            # Zero & Backward & Step
+            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            if step > 0 and step % 1 == 0:
+            # Logging
+            if step > 0 and step % 10 == 0:
                 _loss = loss.item()
                 duration = float(time.time() - start_time)
                 example_per_second = config["batch_size"] / duration
@@ -125,26 +101,14 @@ def train(config):
                     "epoch [%.3d] iter = %d loss = %.2f example/sec = %.3f lr = %.5f " %
                     (epoch, step, _loss, example_per_second, lr)
                 )
-                config["tensorboard_writer"].add_scalar("lr",
-                                                        lr,
-                                                        config["global_step"])
-                config["tensorboard_writer"].add_scalar("example/sec",
-                                                        example_per_second,
-                                                        config["global_step"])
-                for i, name in enumerate(losses_name):
-                    value = _loss if i == 0 else losses[i]
-                    config["tensorboard_writer"].add_scalar(name,
-                                                            value,
-                                                            config["global_step"])
 
-                # net.train(True)
-
+        # Things to be done for every epoch
+        ## LR schedule
         lr_scheduler.step()
-        # save every epoch
+        ## Save checkpoint
         _save_checkpoint(net.state_dict(), config, epoch)
 
-    # net.train(False)
-    # net.train(True)
+    # Finish training
     logging.info("Bye~")
 
 def _save_checkpoint(state_dict, config, epoch, evaluate_func=None):
@@ -153,21 +117,11 @@ def _save_checkpoint(state_dict, config, epoch, evaluate_func=None):
     checkpoint_path = os.path.join(config["sub_working_dir"], "model%.2d.pth"%epoch)
     torch.save(state_dict, checkpoint_path)
     logging.info("Model checkpoint saved to %s" % checkpoint_path)
-    # eval_result = evaluate_func(config)
-    # if eval_result > best_eval_result:
-    # best_eval_result = eval_result
-    # logging.info("New best result: {}".format(best_eval_result))
-    # best_checkpoint_path = os.path.join(config["sub_working_dir"], 'model_best.pth')
-    # shutil.copyfile(checkpoint_path, best_checkpoint_path)
-    # logging.info("Best checkpoint saved to {}".format(best_checkpoint_path))
-    # else:
-    # logging.info("Best result: {}".format(best_eval_result))
 
 
 def _get_optimizer(config, net):
     optimizer = None
 
-    # Assign different lr for each layer
     params = None
     base_params = list(
         map(id, net.backbone.parameters())
@@ -248,21 +202,13 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config["parallels"]))
 
     # 开启训练！！！！
-    config["train_path"] = "/home/bryce/data/batch_all/train.txt"
-    config["start_epoch"]=67
-    config["epochs"] = 68
-    config["pretrain_snapshot"]= "../darknet_53/size960x960_try5/model67.pth"  # load checkpoint
+    config["train_path"] = "/home/ar2e5/data_xmlonly/sets_merged/meta/train.txt"
+    config["start_epoch"]=0
+    config["epochs"] = 5
+    config["pretrain_snapshot"]= "/home/bryce/yolov3_pytprch_/darknet_53/size416x416_try0/model00.pth"  # load checkpoint
 
     train(config)
 
 
 if __name__ == "__main__":
-    #graphviz = GraphvizOutput(output_file=r'./trace_%s.png' % str(__file__))
-    #pycallgraph_config = Config(max_depth=100)
-    #with PyCallGraph(output=graphviz,config=pycallgraph_config):
     main()
-
-    import torchvision
-    #train_dataset = torchvision.datasets.CIFAR10()
-    #criterion = nn.CrossEntropyLoss()
-    #resnet = torchvision.models.resnet18(pretrained=True)

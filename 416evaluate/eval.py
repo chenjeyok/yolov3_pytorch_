@@ -46,7 +46,7 @@ def evaluate(config):
                                     config["yolo"]["classes"], (config["img_w"], config["img_h"])))
 
     # DataLoader
-    dataloader = torch.utils.data.DataLoader(dataset=COCODataset(config["test_path"], config["img_w"]),
+    dataloader = torch.utils.data.DataLoader(dataset=AIPrimeDataset(config["test_path"]),
                                              batch_size=config["batch_size"],
                                              shuffle=False, num_workers=8, pin_memory=False)
 
@@ -160,7 +160,7 @@ def main():
     # best 24/25
     # best 31/35
     # best 38/62; best 39/62 after IoU/B1/B2
-    for i in range(67,68):
+    for i in range(0,5):
         #for conf_thresh in [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]: # m39 best 0.11
         for conf_thresh in [(0.11,0.11,0.11,0.03,0.11)]:
             #for nms_thresh in [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]: # m39 best 0.40 on IoU/B1/B2

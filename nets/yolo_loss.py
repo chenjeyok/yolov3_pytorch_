@@ -30,7 +30,7 @@ class YOLOLoss(nn.Module):
         stride_w = self.img_size[1] / in_w
         scaled_anchors = [(a_w / stride_w, a_h / stride_h) for a_w, a_h in self.anchors]
 
-        # prediction.shape [8, 3, 18, 30, 5+5]、[8, 30, 36, 60, 5+5]、[8, 30, 72, 120, 5+5]
+        # prediction.shape will be [8, 3, 13, 13, 5+5]、[8, 3, 26, 26, 5+5]、[8, 3, 52, 52, 5+5]
         prediction = input.view(bs,  self.num_anchors, self.bbox_attrs, in_h, in_w).permute(0, 1, 3, 4, 2).contiguous()
         #logging.debug(prediction.shape)
 
