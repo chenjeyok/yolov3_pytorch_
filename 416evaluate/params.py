@@ -8,27 +8,18 @@ TRAINING_PARAMS = \
         "anchors": [[[116, 90], [156, 198], [373, 326]],
                     [[30, 61], [62, 45], [59, 119]],
                     [[10, 13], [16, 30], [33, 23]]],
-        "classes": 5,
+        "classes": 8,
     },
-    "batch_size": 128,
+    "batch_size": 32,
 
-    "conf_thresh":0.50,
-    "nms_thresh":0.20,
-
-    "obj_thresh":0.50,
     "iou_thresh": 0.40,
 
-    "types":{"Person": 0,
-             "Driver": 1,
-             "Barrel": 2,
-             "ICB": 3,
-             "ForkLift": 4
-             },
+    "types": {"Head":0, "Cloth":1 ,"Person": 2, "Driver": 3, "Barrel": 4, "ICB": 5, "ForkLift_1": 6, "ForkLift_2":7},
 
-    "test_path": "/home/bryce/data/batch6/datasets/coco5/metas/test.txt",
+    "test_path": "/home/bryce/data/batch6/datasets/coco7_sym/metas/valid.txt",
     "img_h": 416,
     "img_w": 416,
     #"parallels": [0],
-    "parallels": [0, 2, 3, 4],
+    "parallels": [0],
     "pretrain_snapshot": "../darknet_53/size960x960_try5/model00.pth",
 }

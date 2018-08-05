@@ -29,6 +29,6 @@ TRAINING_PARAMS = \
     "img_h": 960,
     "img_w": 960,
     #"parallels": [0],
-    "parallels": [0, 2, 3, 4],
-    "pretrain_snapshot": "../darknet_53/size960x960_try5/model00.pth",
+    "parallels": [0],
+    "pretrain_snapshot": "../darknet_53/size960x960_try5/model66.pth",
 }

@@ -109,7 +109,7 @@ def train(config):
         _save_checkpoint(net.state_dict(), config, epoch)
 
     # Finish training
-    logging.info("Bye~")
+    logging.info("QiaJiaBa~ BeiBei")
 
 def _save_checkpoint(state_dict, config, epoch, evaluate_func=None):
     # global best_eval_result
@@ -202,11 +202,12 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config["parallels"]))
 
     # 开启训练！！！！
-    config["train_path"] = "/home/ar2e5/data_xmlonly/sets_merged/meta/train.txt"
-    config["start_epoch"]=0
-    config["epochs"] = 5
-    config["pretrain_snapshot"]= "/home/bryce/yolov3_pytprch_/darknet_53/size416x416_try0/model00.pth"  # load checkpoint
-
+    #config["train_path"] = "/home/bryce/data/batch_all/coco7_train.txt"
+    config["train_path"] = "/home/bryce/data/batch2/datasets/coco7/metas/train.txt"
+    config["start_epoch"]=8
+    config["epochs"] = 50
+    config["pretrain_snapshot"]= "/home/bryce/yolov3_pytorch_/darknet_53/size416x416_try0/model%.2d.pth" % (config["start_epoch"]-1)   # load checkpoint
+    #config["pretrain_snapshot"]= ""
     train(config)
 
 

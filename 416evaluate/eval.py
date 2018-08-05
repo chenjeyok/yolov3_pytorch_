@@ -160,18 +160,23 @@ def main():
     # best 24/25
     # best 31/35
     # best 38/62; best 39/62 after IoU/B1/B2
-    for i in range(0,5):
+    for i in range(0, 11):
         #for conf_thresh in [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]: # m39 best 0.11
-        for conf_thresh in [(0.11,0.11,0.11,0.03,0.11)]:
+        for conf_thresh in [#(0.30, 0.30, 0.30, 0.30, 0.30, 0.30, 0.30, 0.30),
+                            #(0.40, 0.40, 0.40, 0.40, 0.40, 0.40, 0.40, 0.40),
+                            #(0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50),
+                            #(0.60, 0.60, 0.60, 0.60, 0.60, 0.60, 0.60, 0.60),
+                            #(0.70, 0.70, 0.70, 0.70, 0.70, 0.70, 0.70, 0.70),
+                            (0.70, 0.50, 0.70, 0.70, 0.40, 0.70, 0.70, 0.60)]:
             #for nms_thresh in [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]: # m39 best 0.40 on IoU/B1/B2
-            for nms_thresh in [(0.4,0.4,0.4,0.35,0.4)]:
+            for nms_thresh in [(0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4)]:
                 for iou_thresh in[0.4]:
                 # this one the smaller is the better, so there's no need to sweep it
                     logging.info("model%.2d, conf_thresh=%s nms_thresh=%s(IoU/B1/B2) iou_thresh=%.2f" % (i, str(conf_thresh),str(nms_thresh),iou_thresh))
                     config["conf_thresh"] = conf_thresh
                     config["nms_thresh"] = nms_thresh
-                    config["test_path"]="/home/ar2e5/data_xmlonly/sets_merged/meta/test.txt"
-                    config["pretrain_snapshot"]= "../darknet_53/size960x960_try5/model%.2d.pth" % i
+                    config["test_path"]="/home/bryce/data/batch2/datasets/coco7/metas/valid.txt"
+                    config["pretrain_snapshot"]= "../darknet_53/size416x416_try1/model%.2d.pth" % i
                     evaluate(config)
 
 

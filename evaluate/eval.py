@@ -117,6 +117,7 @@ def evaluate(config):
                             #logging.info("%d" % obj_cls)
                             box_pred = torch.cat([coord.unsqueeze(0) for coord in [x1, y1, x2, y2]]).view(1, -1)
                             #pred_histro[int(obj_pred)] += 1
+
                             iou = bbox_iou(box_pred, box_gt)
                             #if iou >= config["iou_thres"] and obj_conf >= config["obj_thresh"]:
                             if iou >= config["iou_thresh"]:
