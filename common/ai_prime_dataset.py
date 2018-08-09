@@ -16,7 +16,7 @@ class AIPrimeDataset(Dataset):
         self.label_files = [path.replace('images', 'labels').replace('.png', '.txt'
                             ).replace('.jpg', '.txt') for path in self.img_files]
         self.resized_img_shape = (img_h, img_w) # for resize method use & it requires (h,w)
-        self.max_objects = 50
+        self.max_objects = 100
 
     def __getitem__(self, index):
         img_path = self.img_files[index % len(self.img_files)].rstrip()

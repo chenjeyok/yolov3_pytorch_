@@ -64,7 +64,7 @@ def train(config):
     # DataLoader
     dataloader = torch.utils.data.DataLoader(AIPrimeDataset(config["train_path"]),
                                              batch_size=config["batch_size"],
-                                             shuffle=True, num_workers=16, pin_memory=True)
+                                             shuffle=True, num_workers=16, pin_memory=False)
 
     # Start the training
     logging.info("Start training.")
@@ -143,11 +143,14 @@ def _get_optimizer(config, net):
 
     # Initialize optimizer class
     if config["optimizer"]["type"] == "adam":
+        logging.info("Using Adam optimizer.")
         optimizer = optim.Adam(params, weight_decay=config["optimizer"]["weight_decay"])
     elif config["optimizer"]["type"] == "amsgrad":
+        logging.info("Using Amsgrad optimizer.")
         optimizer = optim.Adam(params, weight_decay=config["optimizer"]["weight_decay"],
                                amsgrad=True)
     elif config["optimizer"]["type"] == "rmsprop":
+        logging.info("Using Rmsprop optimizer.")
         optimizer = optim.RMSprop(params, weight_decay=config["optimizer"]["weight_decay"])
     else:
         # Default to sgd
@@ -204,9 +207,14 @@ def main():
     # 开启训练！！！！
     #config["train_path"] = "/home/bryce/data/batch_all/coco7_train.txt"
     config["train_path"] = "/home/bryce/data/batch2/datasets/coco7/metas/train.txt"
-    config["start_epoch"]=8
-    config["epochs"] = 50
-    config["pretrain_snapshot"]= "/home/bryce/yolov3_pytorch_/darknet_53/size416x416_try0/model%.2d.pth" % (config["start_epoch"]-1)   # load checkpoint
+    config["start_epoch"]= 54
+    config["epochs"] = 70
+    config["lr"]["backbone_lr"]=0.005
+    config["lr"]["other_lr"]=0.005
+    config["lr"]["decay_gamma"]= 0.3
+    config["lr"]["decay_step"]= 5
+    config["lr"]["freeze_backbone"]=False
+    config["pretrain_snapshot"]= "/home/bryce/yolov3_pytorch_/darknet_53/size416x416_try0/model53.pth" #% (config["start_epoch"]-1)   # load checkpoint
     #config["pretrain_snapshot"]= ""
     train(config)
 

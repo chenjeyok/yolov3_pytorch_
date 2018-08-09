@@ -48,7 +48,7 @@ def evaluate(config):
     # DataLoader
     dataloader = torch.utils.data.DataLoader(dataset=AIPrimeDataset(config["test_path"]),
                                              batch_size=config["batch_size"],
-                                             shuffle=False, num_workers=8, pin_memory=False)
+                                             shuffle=False, num_workers=20, pin_memory=True)
 
     # Start the eval loop
     #logging.info("Start eval.")
@@ -138,13 +138,17 @@ def evaluate(config):
         logging.info('Precision:%s' % str([reverse_types[i] +':'+ str(int(100 * correct_histro[i] / pred_histro[i])) for i in range(config["yolo"]["classes"]) ]))
         logging.info('Recall   :%s' % str([reverse_types[i] +':'+ str(int(100 * correct_histro[i] / gt_histro[i])) for i in range(config["yolo"]["classes"])]))
 
+        all_histro = config["all_histro"]
+        for i in range(config["yolo"]["classes"]):
+            all_histro[i][0][int(config["step_x"])][int(config["step_y"])] =  correct_histro[i] / pred_histro[i]
+            all_histro[i][1][int(config["step_x"])][int(config["step_y"])] =  correct_histro[i] / gt_histro[i]
         #logging.info('Mean Average Precision: %.5f' % float(correct / n_gt))
-
+        logging.info(all_histro)
+        np.save("result2.npy", all_histro)
 
 def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="[%(asctime)s %(filename)s] %(message)s")
-
     if len(sys.argv) != 2:
         logging.error("Usage: python training.py params.py")
         sys.exit()
@@ -154,27 +158,28 @@ def main():
         sys.exit()
     config = importlib.import_module(params_path[:-3]).TRAINING_PARAMS
     config["batch_size"] *= len(config["parallels"])
-
+    config["all_histro"] = np.zeros((8, 2, 20, 20))
     # Start training
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config["parallels"]))
-    # best 24/25
-    # best 31/35
-    # best 38/62; best 39/62 after IoU/B1/B2
-    for i in range(0, 11):
+    for i in range(39, 40 ):
+        # From No 00-50  on Batch2 : 45 BEST
+        # From 45 50-100 on Batch3 : 59 SECOND
+        # From 45 04-40  on Batch2 Complete: 39 BEST
         #for conf_thresh in [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]: # m39 best 0.11
-        for conf_thresh in [#(0.30, 0.30, 0.30, 0.30, 0.30, 0.30, 0.30, 0.30),
-                            #(0.40, 0.40, 0.40, 0.40, 0.40, 0.40, 0.40, 0.40),
-                            #(0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50),
-                            #(0.60, 0.60, 0.60, 0.60, 0.60, 0.60, 0.60, 0.60),
-                            #(0.70, 0.70, 0.70, 0.70, 0.70, 0.70, 0.70, 0.70),
-                            (0.70, 0.50, 0.70, 0.70, 0.40, 0.70, 0.70, 0.60)]:
-            #for nms_thresh in [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]: # m39 best 0.40 on IoU/B1/B2
-            for nms_thresh in [(0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4)]:
-                for iou_thresh in[0.4]:
+        conf_sweep = [(x / 100, x / 100, x / 100, x / 100, x / 100, x / 100, x / 100, x / 100) for x in range(1, 101, 5)]
+        nms_sweep = [(y / 100, y / 100, y / 100, y / 100, y / 100, y / 100, y / 100, y / 100) for y in range(1, 101, 5)]
+        conf_sweep = [(0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6)]
+        nms_sweep = [(0.5, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6)]
+        for step_x in range(len(conf_sweep)):
+            for step_y in range(len(nms_sweep)):
+                for iou_thresh in [0.35]:
                 # this one the smaller is the better, so there's no need to sweep it
-                    logging.info("model%.2d, conf_thresh=%s nms_thresh=%s(IoU/B1/B2) iou_thresh=%.2f" % (i, str(conf_thresh),str(nms_thresh),iou_thresh))
-                    config["conf_thresh"] = conf_thresh
-                    config["nms_thresh"] = nms_thresh
+                    logging.info("model%.2d, conf_thresh=%s nms_thresh=%s(IoU/B1/B2) iou_thresh=%.2f" % (i, str(conf_sweep[step_x]),str(nms_sweep[step_y]),iou_thresh))
+                    config["step_x"] = step_x
+                    config["conf_thresh"] = conf_sweep[step_x]
+                    config["step_y"] = step_y
+                    config["nms_thresh"] = nms_sweep[step_y]
+                    config["iou_thresh"] = iou_thresh
                     config["test_path"]="/home/bryce/data/batch2/datasets/coco7/metas/valid.txt"
                     config["pretrain_snapshot"]= "../darknet_53/size416x416_try1/model%.2d.pth" % i
                     evaluate(config)

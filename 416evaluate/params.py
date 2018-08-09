@@ -10,7 +10,7 @@ TRAINING_PARAMS = \
                     [[10, 13], [16, 30], [33, 23]]],
         "classes": 8,
     },
-    "batch_size": 32,
+    "batch_size": 128,
 
     "iou_thresh": 0.40,
 
@@ -20,6 +20,6 @@ TRAINING_PARAMS = \
     "img_h": 416,
     "img_w": 416,
     #"parallels": [0],
-    "parallels": [0],
+    "parallels": [0,2,3,4],
     "pretrain_snapshot": "../darknet_53/size960x960_try5/model00.pth",
 }

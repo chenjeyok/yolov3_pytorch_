@@ -15,14 +15,14 @@ TRAINING_PARAMS = \
 
     },
     "lr": {
-        "backbone_lr": 0.005,
-        "other_lr": 0.005,
+        "backbone_lr": 0.001,
+        "other_lr": 0.001,
         "freeze_backbone": False,   #  freeze backbone wegiths to finetune
-        "decay_gamma": 0.8,
+        "decay_gamma": 0.5,
         "decay_step": 5,           #  decay lr in every ? epochs
     },
     "optimizer": {
-        "type": "sgd",
+        "type": "adam",
         "weight_decay": 4e-05,
     },
     "batch_size": 32,
